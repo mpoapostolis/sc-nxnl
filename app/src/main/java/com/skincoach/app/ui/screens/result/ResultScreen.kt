@@ -103,6 +103,7 @@ private sealed interface ResultUiState {
     ) : ResultUiState
     data object NoFace : ResultUiState
     data object Failed : ResultUiState
+    data class Retake(val message: String) : ResultUiState
 }
 
 @Composable
@@ -143,6 +144,7 @@ fun ResultScreen(
             }
             AnalysisResult.NoFace -> ResultUiState.NoFace
             AnalysisResult.Failed -> ResultUiState.Failed
+            is AnalysisResult.LowQuality -> ResultUiState.Retake(result.message)
         }
     }
 
@@ -158,6 +160,11 @@ fun ResultScreen(
             ResultUiState.Failed -> ErrorState(
                 title = "That one didn't work",
                 message = "Something went wrong reading the photo. Let's take another together.",
+                onRescan = onRescan,
+            )
+            is ResultUiState.Retake -> ErrorState(
+                title = "Let's retake that one",
+                message = s.message,
                 onRescan = onRescan,
             )
         }
@@ -376,6 +383,14 @@ private fun ResultContent(
                 textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(16.dp))
+            Text(
+                text = "An at-a-glance glow check — not a medical diagnosis. For real concerns, see a dermatologist.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = InkFaint,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(8.dp))
             Text(
                 text = "Analyzed privately on your device — nothing is uploaded.",
                 style = MaterialTheme.typography.bodyMedium,

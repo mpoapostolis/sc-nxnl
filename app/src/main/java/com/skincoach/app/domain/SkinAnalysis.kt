@@ -26,4 +26,7 @@ sealed interface AnalysisResult {
     data class Success(val analysis: SkinAnalysis, val faceCrop: Bitmap) : AnalysisResult
     data object NoFace : AnalysisResult
     data object Failed : AnalysisResult
+
+    /** The photo was readable but too poor to score fairly — [message] says what to fix. */
+    data class LowQuality(val message: String) : AnalysisResult
 }

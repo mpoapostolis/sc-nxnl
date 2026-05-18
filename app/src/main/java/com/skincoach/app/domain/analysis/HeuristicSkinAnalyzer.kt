@@ -16,19 +16,23 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /**
- * On-device skin analyzer. Locates the face with ML Kit, samples skin patches
- * (forehead, cheeks, nose, chin) and derives scores from real measurements.
+ * On-device skin analyzer. Locates the face with ML Kit, turns away photos that
+ * are too poor to score fairly, then samples skin patches (forehead, cheeks,
+ * nose, chin) and derives scores from real measurements.
  *
- * Every measurement is **lighting-normalized** (expressed relative to the skin's
- * own brightness) and uses **medians** over generous patches — so the same face
- * scores consistently across different lighting, instead of drifting.
+ * Consistency — the same face scoring the same way twice — comes from:
+ *  - a **quality gate**: a blurry, dark, over-lit or angled photo is sent back,
+ *    so a score is only ever computed on comparable input;
+ *  - **lighting-normalized** metrics, expressed relative to the skin's own
+ *    brightness, with texture ignoring hair/shadow outliers;
+ *  - **medians over generous patches**, so sampling noise averages away.
  *
- * It is a heuristic, not a trained dermatology model — acne and fine-line scores
- * are approximate. Everything runs locally; no network, no cost.
+ * It is a heuristic, not a trained dermatology model. Everything runs locally.
  */
 class HeuristicSkinAnalyzer : SkinAnalyzer {
 
@@ -47,9 +51,42 @@ class HeuristicSkinAnalyzer : SkinAnalyzer {
             return AnalysisResult.Failed
         } ?: return AnalysisResult.NoFace
 
+        // Quality gate — framing and head angle (cheap, straight from the face).
+        val box = face.boundingBox
+        if (box.width() < bitmap.width * 0.24f || box.width() < 130) {
+            return AnalysisResult.LowQuality(
+                "Hold the phone a little closer — your face is too small to read clearly.",
+            )
+        }
+        if (abs(face.headEulerAngleY) > 16f ||
+            abs(face.headEulerAngleZ) > 14f ||
+            abs(face.headEulerAngleX) > 18f
+        ) {
+            return AnalysisResult.LowQuality(
+                "Look straight at the camera and keep your head level, then scan again.",
+            )
+        }
+
         return withContext(Dispatchers.Default) {
-            val metrics = measure(bitmap, face) ?: return@withContext AnalysisResult.NoFace
-            AnalysisResult.Success(score(metrics), cropToFace(bitmap, face))
+            val sampled = samplePatches(bitmap, face)
+                ?: return@withContext AnalysisResult.NoFace
+
+            // Quality gate — lighting and focus (needs the sampled pixels).
+            val brightness = sampled.patches.map { it.medianLum }.average()
+            val sharpness = sampled.patches.map { it.sharpness }.average()
+            when {
+                brightness < 60.0 -> return@withContext AnalysisResult.LowQuality(
+                    "It's a little dark — move to softer, brighter light and scan again.",
+                )
+                brightness > 232.0 -> return@withContext AnalysisResult.LowQuality(
+                    "That's a bit too bright — ease away from the strong light and scan again.",
+                )
+                sharpness < 0.011 -> return@withContext AnalysisResult.LowQuality(
+                    "That came out blurry — hold still, let the camera focus, and scan again.",
+                )
+            }
+
+            AnalysisResult.Success(score(aggregate(sampled)), cropToFace(bitmap, face))
         }
     }
 
@@ -60,11 +97,10 @@ class HeuristicSkinAnalyzer : SkinAnalyzer {
                 .addOnFailureListener { cont.resumeWithException(it) }
         }
 
-    private fun measure(bitmap: Bitmap, face: Face): Metrics? {
+    private fun samplePatches(bitmap: Bitmap, face: Face): Sampled? {
         val box = face.boundingBox
         val w = box.width()
         val h = box.height()
-        if (w < 60 || h < 60) return null
 
         fun landmark(type: Int, fallbackX: Int, fallbackY: Int): Pair<Int, Int> {
             val p = face.getLandmark(type)?.position
@@ -73,29 +109,18 @@ class HeuristicSkinAnalyzer : SkinAnalyzer {
 
         // Generous patches — more pixels means less sampling noise.
         val side = (w * 0.19f).toInt().coerceAtLeast(14)
-        val forehead = samplePatch(bitmap, box.centerX(), box.top + (h * 0.20f).toInt(), side)
+        // The forehead patch sits well below the hairline so it samples skin, not hair.
+        val forehead = samplePatch(bitmap, box.centerX(), box.top + (h * 0.27f).toInt(), side)
         val leftCheek = landmark(FaceLandmark.LEFT_CHEEK, box.left + (w * 0.24f).toInt(), box.centerY())
             .let { samplePatch(bitmap, it.first, it.second, side) }
         val rightCheek = landmark(FaceLandmark.RIGHT_CHEEK, box.right - (w * 0.24f).toInt(), box.centerY())
             .let { samplePatch(bitmap, it.first, it.second, side) }
         val nose = landmark(FaceLandmark.NOSE_BASE, box.centerX(), box.centerY())
             .let { samplePatch(bitmap, it.first, it.second, side) }
-        val chin = samplePatch(bitmap, box.centerX(), box.bottom - (h * 0.12f).toInt(), side)
+        val chin = samplePatch(bitmap, box.centerX(), box.bottom - (h * 0.14f).toInt(), side)
 
         val patches = listOfNotNull(forehead, leftCheek, rightCheek, nose, chin)
-        if (patches.size < 3) return null
-
-        val patchLums = patches.map { it.medianLum }
-        val overallLum = patchLums.average()
-        return Metrics(
-            redness = patches.map { it.medianRedness }.average(),
-            shine = patches.map { it.shineFraction }.average(),
-            texture = patches.map { it.relativeTexture }.average(),
-            toneUnevenness = standardDeviation(patchLums) / (overallLum + 1.0),
-            blemish = patches.map { it.blemishFraction }.average(),
-            foreheadTexture = forehead?.relativeTexture
-                ?: patches.map { it.relativeTexture }.average(),
-        )
+        return if (patches.size < 3) null else Sampled(patches, forehead)
     }
 
     private fun samplePatch(bitmap: Bitmap, cx: Int, cy: Int, side: Int): PatchStats? {
@@ -130,31 +155,96 @@ class HeuristicSkinAnalyzer : SkinAnalyzer {
         val medianLum = median(lums)
         val medianRed = median(reds)
 
-        var varSum = 0.0
+        // Texture — luminance spread, but only over skin-range pixels. Hair,
+        // brows and hard shadows fall outside the band, so stubble and stray
+        // hairs can't masquerade as pores or fine lines.
+        val lo = medianLum * 0.72
+        val hi = medianLum * 1.32
+        var texVar = 0.0
+        var texCount = 0
         for (l in lums) {
-            val d = l - medianLum
-            varSum += d * d
+            if (l in lo..hi) {
+                val d = l - medianLum
+                texVar += d * d
+                texCount++
+            }
         }
-        val lumStd = sqrt(varSum / n)
+        val texStd = if (texCount > 8) sqrt(texVar / texCount) else 0.0
 
-        // Shine and blemishes are measured RELATIVE to the patch's own skin —
-        // a highlight is brighter than its surroundings whatever the lighting.
+        // Shine — bright, low-saturation pixels, relative to the patch's own skin.
         val shineThreshold = medianLum * 1.40
-        val darkThreshold = medianLum * 0.84
         var shine = 0
-        var blemish = 0
         for (i in 0 until n) {
             if (lums[i] > shineThreshold && sats[i] < 0.20) shine++
-            if (lums[i] < darkThreshold || reds[i] > medianRed + 0.10) blemish++
+        }
+
+        // Blemishes — pixels that are notably RED, not merely dark. Requiring
+        // redness keeps neutral shadows and dark hair from counting as acne.
+        var blemish = 0
+        for (i in 0 until n) {
+            if (reds[i] > medianRed + 0.13) blemish++
         }
 
         return PatchStats(
             medianLum = medianLum,
             medianRedness = medianRed,
-            relativeTexture = lumStd / (medianLum + 1.0),
+            relativeTexture = texStd / (medianLum + 1.0),
             shineFraction = shine.toDouble() / n,
             blemishFraction = blemish.toDouble() / n,
+            toneSpread = lowFrequencySpread(lums, pw, ph, medianLum),
+            sharpness = highFrequencyEnergy(lums, pw, ph, medianLum),
         )
+    }
+
+    /**
+     * Regional tone variation *within* a patch — the patch is split into a grid
+     * and the spread of block brightnesses is measured. Staying inside one small
+     * patch, it reflects mottling and spots rather than the room's light direction.
+     */
+    private fun lowFrequencySpread(lums: DoubleArray, pw: Int, ph: Int, median: Double): Double {
+        val grid = 4
+        if (pw < grid * 2 || ph < grid * 2) return 0.0
+        val bw = pw / grid
+        val bh = ph / grid
+        val blockMeans = DoubleArray(grid * grid)
+        for (by in 0 until grid) {
+            for (bx in 0 until grid) {
+                var sum = 0.0
+                var count = 0
+                for (yy in by * bh until (by + 1) * bh) {
+                    for (xx in bx * bw until (bx + 1) * bw) {
+                        sum += lums[yy * pw + xx]
+                        count++
+                    }
+                }
+                blockMeans[by * grid + bx] = if (count > 0) sum / count else median
+            }
+        }
+        val mean = blockMeans.average()
+        val variance = blockMeans.sumOf { (it - mean) * (it - mean) } / blockMeans.size
+        return sqrt(variance) / (median + 1.0)
+    }
+
+    /**
+     * High-frequency energy — the average brightness step between neighbouring
+     * pixels. An in-focus photo carries real micro-detail; a blurry one is smooth.
+     */
+    private fun highFrequencyEnergy(lums: DoubleArray, pw: Int, ph: Int, median: Double): Double {
+        var sum = 0.0
+        var count = 0
+        for (yy in 0 until ph) {
+            for (xx in 0 until pw - 1) {
+                sum += abs(lums[yy * pw + xx] - lums[yy * pw + xx + 1])
+                count++
+            }
+        }
+        for (yy in 0 until ph - 1) {
+            for (xx in 0 until pw) {
+                sum += abs(lums[yy * pw + xx] - lums[(yy + 1) * pw + xx])
+                count++
+            }
+        }
+        return if (count > 0) (sum / count) / (median + 1.0) else 0.0
     }
 
     /** Crops the photo down to the face (with padding) for display and history. */
@@ -173,14 +263,27 @@ class HeuristicSkinAnalyzer : SkinAnalyzer {
         }.getOrDefault(bitmap)
     }
 
+    private fun aggregate(sampled: Sampled): Metrics {
+        val patches = sampled.patches
+        return Metrics(
+            redness = patches.map { it.medianRedness }.average(),
+            shine = patches.map { it.shineFraction }.average(),
+            texture = patches.map { it.relativeTexture }.average(),
+            toneUnevenness = patches.map { it.toneSpread }.average(),
+            blemish = patches.map { it.blemishFraction }.average(),
+            foreheadTexture = sampled.forehead?.relativeTexture
+                ?: patches.map { it.relativeTexture }.average(),
+        )
+    }
+
     private fun score(m: Metrics): SkinAnalysis {
         val concerns = listOf(
             ConcernScore(Concern.REDNESS, mapScore(m.redness, best = 0.07, worst = 0.24)),
             ConcernScore(Concern.OILINESS, mapScore(m.shine, best = 0.0, worst = 0.16)),
-            ConcernScore(Concern.PORES, mapScore(m.texture, best = 0.05, worst = 0.20)),
-            ConcernScore(Concern.DARK_SPOTS, mapScore(m.toneUnevenness, best = 0.03, worst = 0.16)),
-            ConcernScore(Concern.ACNE, mapScore(m.blemish, best = 0.0, worst = 0.14)),
-            ConcernScore(Concern.FINE_LINES, mapScore(m.foreheadTexture, best = 0.05, worst = 0.20)),
+            ConcernScore(Concern.PORES, mapScore(m.texture, best = 0.035, worst = 0.14)),
+            ConcernScore(Concern.DARK_SPOTS, mapScore(m.toneUnevenness, best = 0.015, worst = 0.10)),
+            ConcernScore(Concern.ACNE, mapScore(m.blemish, best = 0.0, worst = 0.10)),
+            ConcernScore(Concern.FINE_LINES, mapScore(m.foreheadTexture, best = 0.04, worst = 0.15)),
         )
         val weights = mapOf(
             Concern.REDNESS to 1.0, Concern.OILINESS to 1.0,
@@ -211,11 +314,10 @@ class HeuristicSkinAnalyzer : SkinAnalyzer {
         }
     }
 
-    private fun standardDeviation(values: List<Double>): Double {
-        if (values.size < 2) return 0.0
-        val mean = values.average()
-        return sqrt(values.sumOf { (it - mean) * (it - mean) } / values.size)
-    }
+    private class Sampled(
+        val patches: List<PatchStats>,
+        val forehead: PatchStats?,
+    )
 
     private data class PatchStats(
         val medianLum: Double,
@@ -223,6 +325,8 @@ class HeuristicSkinAnalyzer : SkinAnalyzer {
         val relativeTexture: Double,
         val shineFraction: Double,
         val blemishFraction: Double,
+        val toneSpread: Double,
+        val sharpness: Double,
     )
 
     private data class Metrics(
