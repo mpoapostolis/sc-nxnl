@@ -15,6 +15,7 @@ import com.skincoach.app.ui.screens.capture.CaptureScreen
 import com.skincoach.app.ui.screens.history.HistoryScreen
 import com.skincoach.app.ui.screens.home.HomeScreen
 import com.skincoach.app.ui.screens.result.ResultScreen
+import com.skincoach.app.ui.screens.today.TodayScreen
 
 @Composable
 fun SkinCoachNavHost() {
@@ -35,6 +36,7 @@ fun SkinCoachNavHost() {
             HomeScreen(
                 onScanClick = { navController.navigate(Destinations.CAPTURE) },
                 onHistoryClick = { navController.navigate(Destinations.HISTORY) },
+                onTodayClick = { navController.navigate(Destinations.TODAY) },
             )
         }
         composable(Destinations.CAPTURE) {
@@ -49,6 +51,16 @@ fun SkinCoachNavHost() {
         }
         composable(Destinations.HISTORY) {
             HistoryScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Destinations.TODAY) {
+            TodayScreen(
+                onBack = { navController.popBackStack() },
+                onScanClick = {
+                    navController.navigate(Destinations.CAPTURE) {
+                        popUpTo(Destinations.HOME)
+                    }
+                },
+            )
         }
         composable(
             route = Destinations.RESULT_ROUTE,

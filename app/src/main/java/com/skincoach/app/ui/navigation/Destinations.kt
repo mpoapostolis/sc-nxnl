@@ -7,6 +7,7 @@ object Destinations {
     const val HOME = "home"
     const val CAPTURE = "capture"
     const val HISTORY = "history"
+    const val TODAY = "today"
 
     // Result carries the captured photo's file path.
     const val RESULT_ARG_PHOTO = "photo"

@@ -4,6 +4,8 @@ package com.skincoach.app.domain.routine
 data class RoutineStep(
     val title: String,
     val detail: String,
+    /** Everyday essentials are `true`; occasional steps (2-3x/week) are `false`. */
+    val daily: Boolean = true,
 )
 
 /** A personalized AM/PM skincare routine. */

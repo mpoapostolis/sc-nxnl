@@ -19,20 +19,27 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.skincoach.app.data.RoutineRepository
+import com.skincoach.app.data.currentStreak
 import com.skincoach.app.ui.components.AnimatedCoachMascot
 import com.skincoach.app.ui.components.MascotMood
 import com.skincoach.app.ui.components.Sparkle
 import com.skincoach.app.ui.components.bounceClick
 import com.skincoach.app.ui.components.reveal
+import com.skincoach.app.ui.components.softShadow
 import com.skincoach.app.ui.components.stagger
 import com.skincoach.app.ui.theme.Cloud
 import com.skincoach.app.ui.theme.Ink
@@ -40,10 +47,10 @@ import com.skincoach.app.ui.theme.InkFaint
 import com.skincoach.app.ui.theme.InkSoft
 import com.skincoach.app.ui.theme.Line
 import com.skincoach.app.ui.theme.Paper
-import com.skincoach.app.ui.theme.SkinCoachTheme
 import com.skincoach.app.ui.theme.Terracotta
 import com.skincoach.app.ui.theme.TerracottaDeep
 import com.skincoach.app.ui.theme.TerracottaSoft
+import java.time.LocalDate
 import java.util.Calendar
 
 private val Concerns = listOf(
@@ -60,7 +67,17 @@ private fun timeGreeting(): String =
     }
 
 @Composable
-fun HomeScreen(onScanClick: () -> Unit, onHistoryClick: () -> Unit) {
+fun HomeScreen(
+    onScanClick: () -> Unit,
+    onHistoryClick: () -> Unit,
+    onTodayClick: () -> Unit,
+) {
+    val context = LocalContext.current
+    val routineRepo = remember { RoutineRepository(context) }
+    val completedDays by routineRepo.observeCompletedDays()
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+    val streak = currentStreak(completedDays.toSet(), remember { LocalDate.now().toEpochDay() })
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -178,10 +195,18 @@ fun HomeScreen(onScanClick: () -> Unit, onHistoryClick: () -> Unit) {
 
             Spacer(Modifier.height(12.dp))
 
+            TodayButton(
+                streak = streak,
+                onClick = onTodayClick,
+                modifier = Modifier.reveal(stagger(430)),
+            )
+
+            Spacer(Modifier.height(12.dp))
+
             SecondaryButton(
                 text = "My progress",
                 onClick = onHistoryClick,
-                modifier = Modifier.reveal(stagger(440)),
+                modifier = Modifier.reveal(stagger(470)),
             )
 
             Spacer(Modifier.height(16.dp))
@@ -191,7 +216,7 @@ fun HomeScreen(onScanClick: () -> Unit, onHistoryClick: () -> Unit) {
                 style = MaterialTheme.typography.labelMedium,
                 color = InkFaint,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().reveal(stagger(480)),
+                modifier = Modifier.fillMaxWidth().reveal(stagger(500)),
             )
 
             Spacer(Modifier.height(4.dp))
@@ -201,7 +226,7 @@ fun HomeScreen(onScanClick: () -> Unit, onHistoryClick: () -> Unit) {
                 style = MaterialTheme.typography.labelMedium,
                 color = InkFaint,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().reveal(stagger(480)),
+                modifier = Modifier.fillMaxWidth().reveal(stagger(500)),
             )
 
             Spacer(Modifier.height(10.dp))
@@ -261,6 +286,38 @@ private fun ScanButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
 }
 
 @Composable
+private fun TodayButton(streak: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(54.dp)
+            .softShadow(corner = 27.dp, elevation = 5.dp)
+            .clip(CircleShape)
+            .background(Cloud)
+            .bounceClick { onClick() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (streak > 0) {
+                Text(text = "🔥", fontSize = 17.sp)
+                Spacer(Modifier.width(7.dp))
+                Text(
+                    text = "$streak",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Terracotta,
+                )
+                Spacer(Modifier.width(9.dp))
+            }
+            Text(
+                text = "Today's routine",
+                style = MaterialTheme.typography.titleMedium,
+                color = Ink,
+            )
+        }
+    }
+}
+
+@Composable
 private fun SecondaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
@@ -273,10 +330,4 @@ private fun SecondaryButton(text: String, onClick: () -> Unit, modifier: Modifie
     ) {
         Text(text, style = MaterialTheme.typography.titleMedium, color = Ink)
     }
-}
-
-@Preview(showBackground = true)
-@Composable
-private fun HomeScreenPreview() {
-    SkinCoachTheme { HomeScreen(onScanClick = {}, onHistoryClick = {}) }
 }
