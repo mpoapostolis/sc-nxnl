@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -33,6 +34,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -48,6 +51,7 @@ import com.skincoach.app.data.db.ScanEntity
 import com.skincoach.app.ui.components.AnimatedCoachMascot
 import com.skincoach.app.ui.components.MascotMood
 import com.skincoach.app.ui.components.bounceClick
+import com.skincoach.app.ui.components.softShadow
 import com.skincoach.app.ui.theme.Cloud
 import com.skincoach.app.ui.theme.Ink
 import com.skincoach.app.ui.theme.InkFaint
@@ -81,14 +85,19 @@ fun HistoryScreen(onBack: () -> Unit) {
             .safeDrawingPadding()
             .padding(horizontal = 24.dp),
     ) {
-        Spacer(Modifier.height(12.dp))
-        Text(
-            text = "←",
-            style = MaterialTheme.typography.titleLarge,
-            color = Ink,
-            modifier = Modifier.bounceClick { onBack() },
-        )
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(14.dp))
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .softShadow(corner = 22.dp, elevation = 4.dp)
+                .clip(CircleShape)
+                .background(Cloud)
+                .bounceClick { onBack() },
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(text = "←", style = MaterialTheme.typography.titleLarge, color = Ink)
+        }
+        Spacer(Modifier.height(18.dp))
         Text("Your progress", style = MaterialTheme.typography.headlineLarge, color = Ink)
         Spacer(Modifier.height(6.dp))
         Text(
@@ -104,7 +113,7 @@ fun HistoryScreen(onBack: () -> Unit) {
             CoachCard(message = coachMessage(scans), mood = coachMood(scans))
             Spacer(Modifier.height(20.dp))
             TrendCard(scans)
-            Spacer(Modifier.height(26.dp))
+            Spacer(Modifier.height(28.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
@@ -154,12 +163,13 @@ private fun CoachCard(message: String, mood: MascotMood) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .softShadow(corner = 24.dp)
             .clip(RoundedCornerShape(24.dp))
             .background(Cloud)
             .padding(18.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AnimatedCoachMascot(Modifier.size(56.dp), mood)
+        AnimatedCoachMascot(Modifier.size(58.dp), mood)
         Spacer(Modifier.width(16.dp))
         Column {
             Text(
@@ -184,6 +194,7 @@ private fun TrendCard(scansNewestFirst: List<ScanEntity>) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .softShadow(corner = 24.dp)
             .clip(RoundedCornerShape(24.dp))
             .background(Cloud)
             .padding(20.dp),
@@ -215,7 +226,7 @@ private fun TrendCard(scansNewestFirst: List<ScanEntity>) {
         if (scores.size >= 2) {
             TrendChart(
                 scores = scores,
-                modifier = Modifier.fillMaxWidth().height(120.dp),
+                modifier = Modifier.fillMaxWidth().height(128.dp),
             )
         } else {
             Text(
@@ -234,26 +245,49 @@ private fun TrendChart(scores: List<Int>, modifier: Modifier) {
         val lo = (scores.min() - 6).coerceAtLeast(0)
         val hi = (scores.max() + 6).coerceAtMost(100)
         val range = (hi - lo).coerceAtLeast(1)
-        val stepX = size.width / (scores.size - 1)
+        val n = scores.size
+        val stepX = size.width / (n - 1)
+        val pad = 8.dp.toPx()
 
-        fun pointAt(i: Int): Offset {
+        val pts = List(n) { i ->
             val norm = (scores[i] - lo).toFloat() / range
-            return Offset(stepX * i, size.height - norm * size.height)
+            Offset(stepX * i, size.height - pad - norm * (size.height - 2 * pad))
         }
 
-        val path = Path().apply {
-            moveTo(pointAt(0).x, pointAt(0).y)
-            for (i in 1 until scores.size) lineTo(pointAt(i).x, pointAt(i).y)
+        // a soft, smooth curve through the scores
+        val line = Path().apply {
+            moveTo(pts[0].x, pts[0].y)
+            for (i in 1 until n) {
+                val midX = (pts[i - 1].x + pts[i].x) / 2f
+                val midY = (pts[i - 1].y + pts[i].y) / 2f
+                quadraticTo(pts[i - 1].x, pts[i - 1].y, midX, midY)
+            }
+            lineTo(pts[n - 1].x, pts[n - 1].y)
+        }
+
+        // gentle gradient fill beneath the curve
+        val fill = Path().apply {
+            addPath(line)
+            lineTo(pts[n - 1].x, size.height)
+            lineTo(pts[0].x, size.height)
+            close()
         }
         drawPath(
-            path = path,
-            color = Terracotta,
-            style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+            path = fill,
+            brush = Brush.verticalGradient(
+                colors = listOf(Terracotta.copy(alpha = 0.30f), Color.Transparent),
+            ),
         )
-        for (i in scores.indices) {
-            drawCircle(color = Cloud, radius = 5.dp.toPx(), center = pointAt(i))
-            drawCircle(color = Terracotta, radius = 3.dp.toPx(), center = pointAt(i))
-        }
+        drawPath(
+            path = line,
+            color = Terracotta,
+            style = Stroke(width = 3.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+        )
+
+        // a single "you are here" dot on the latest score
+        val last = pts[n - 1]
+        drawCircle(color = Cloud, radius = 7.dp.toPx(), center = last)
+        drawCircle(color = Terracotta, radius = 4.5.dp.toPx(), center = last)
     }
 }
 
@@ -269,6 +303,7 @@ private fun ScanRow(scan: ScanEntity, onLongPress: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .softShadow(corner = 20.dp, elevation = 6.dp)
             .clip(RoundedCornerShape(20.dp))
             .background(Cloud)
             .combinedClickable(onClick = {}, onLongClick = onLongPress)
