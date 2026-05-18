@@ -2,8 +2,6 @@ package com.skincoach.app.ui.screens.home
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -45,17 +43,12 @@ import com.skincoach.app.ui.theme.Cloud
 import com.skincoach.app.ui.theme.Ink
 import com.skincoach.app.ui.theme.InkFaint
 import com.skincoach.app.ui.theme.InkSoft
-import com.skincoach.app.ui.theme.Line
 import com.skincoach.app.ui.theme.Paper
 import com.skincoach.app.ui.theme.Terracotta
 import com.skincoach.app.ui.theme.TerracottaDeep
 import com.skincoach.app.ui.theme.TerracottaSoft
 import java.time.LocalDate
 import java.util.Calendar
-
-private val Concerns = listOf(
-    "Acne", "Fine lines", "Pores", "Dark spots", "Redness", "Oiliness",
-)
 
 /** A warm, time-aware hello in Lumi's voice. */
 private fun timeGreeting(): String =
@@ -84,11 +77,11 @@ fun HomeScreen(
             .background(Paper),
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val center = Offset(size.width * 0.5f, size.height * 0.26f)
-            val radius = size.minDimension * 1.05f
+            val center = Offset(size.width * 0.5f, size.height * 0.28f)
+            val radius = size.minDimension * 1.1f
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(TerracottaSoft.copy(alpha = 0.75f), Color.Transparent),
+                    colors = listOf(TerracottaSoft.copy(alpha = 0.7f), Color.Transparent),
                     center = center,
                     radius = radius,
                 ),
@@ -101,7 +94,7 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .safeDrawingPadding()
-                .padding(horizontal = 24.dp, vertical = 10.dp),
+                .padding(horizontal = 28.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Row(
@@ -117,56 +110,33 @@ fun HomeScreen(
                 )
             }
 
-            Spacer(Modifier.weight(0.35f))
+            Spacer(Modifier.weight(0.5f))
 
             Box(
-                modifier = Modifier.size(172.dp).reveal(stagger(80)),
+                modifier = Modifier.size(186.dp).reveal(stagger(90)),
                 contentAlignment = Alignment.Center,
             ) {
-                AnimatedCoachMascot(Modifier.size(118.dp), MascotMood.Cheerful)
+                AnimatedCoachMascot(Modifier.size(126.dp), MascotMood.Cheerful)
                 Sparkle(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(top = 12.dp, end = 8.dp)
-                        .size(22.dp),
+                        .padding(top = 14.dp, end = 6.dp)
+                        .size(21.dp),
                     color = Terracotta,
                 )
                 Sparkle(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
-                        .padding(bottom = 22.dp, start = 12.dp)
-                        .size(14.dp),
+                        .padding(bottom = 26.dp, start = 10.dp)
+                        .size(13.dp),
                     color = TerracottaDeep,
                 )
-                Sparkle(
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .size(10.dp),
-                    color = Terracotta,
-                )
             }
 
-            Spacer(Modifier.height(14.dp))
-
-            // Lumi says hello, in her own warm little voice
-            Box(
-                modifier = Modifier
-                    .reveal(stagger(140))
-                    .clip(CircleShape)
-                    .background(Cloud)
-                    .padding(horizontal = 16.dp, vertical = 9.dp),
-            ) {
-                Text(
-                    text = "${timeGreeting()} — i'm lumi ✨",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = InkSoft,
-                )
-            }
-
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(26.dp))
 
             Column(
-                modifier = Modifier.reveal(stagger(200)),
+                modifier = Modifier.reveal(stagger(170)),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text("Your skin,", style = MaterialTheme.typography.displayMedium, color = Ink)
@@ -176,94 +146,53 @@ fun HomeScreen(
             Spacer(Modifier.height(14.dp))
 
             Text(
-                text = "Take a selfie — get your Skin Score and a routine made just for you.",
+                text = "${timeGreeting()} — let's check in on your skin ✨",
                 style = MaterialTheme.typography.bodyLarge,
                 color = InkSoft,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
-                    .fillMaxWidth(0.86f)
-                    .reveal(stagger(260)),
+                    .fillMaxWidth(0.84f)
+                    .reveal(stagger(240)),
             )
-
-            Spacer(Modifier.height(30.dp))
-
-            ConcernSection(modifier = Modifier.reveal(stagger(320)))
 
             Spacer(Modifier.weight(1f))
 
-            ScanButton(onClick = onScanClick, modifier = Modifier.reveal(stagger(390)))
+            ScanButton(onClick = onScanClick, modifier = Modifier.reveal(stagger(330)))
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(14.dp))
 
             TodayButton(
                 streak = streak,
                 onClick = onTodayClick,
-                modifier = Modifier.reveal(stagger(430)),
+                modifier = Modifier.reveal(stagger(385)),
+            )
+
+            Spacer(Modifier.height(20.dp))
+
+            Text(
+                text = "My progress",
+                style = MaterialTheme.typography.titleMedium,
+                color = InkSoft,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .reveal(stagger(435))
+                    .clip(CircleShape)
+                    .bounceClick { onHistoryClick() }
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+
+            Spacer(Modifier.height(22.dp))
+
+            Text(
+                text = "Free  ·  No sign-up  ·  Private on your device",
+                style = MaterialTheme.typography.labelMedium,
+                color = InkFaint,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().reveal(stagger(480)),
             )
 
             Spacer(Modifier.height(12.dp))
-
-            SecondaryButton(
-                text = "My progress",
-                onClick = onHistoryClick,
-                modifier = Modifier.reveal(stagger(470)),
-            )
-
-            Spacer(Modifier.height(16.dp))
-
-            Text(
-                text = "Free  ·  No sign-up",
-                style = MaterialTheme.typography.labelMedium,
-                color = InkFaint,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().reveal(stagger(500)),
-            )
-
-            Spacer(Modifier.height(4.dp))
-
-            Text(
-                text = "Private — your photos never leave your device",
-                style = MaterialTheme.typography.labelMedium,
-                color = InkFaint,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().reveal(stagger(500)),
-            )
-
-            Spacer(Modifier.height(10.dp))
         }
-    }
-}
-
-@Composable
-private fun ConcernSection(modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            text = "WHAT IT READS",
-            style = MaterialTheme.typography.labelMedium,
-            color = InkFaint,
-        )
-        Spacer(Modifier.height(14.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
-            Concerns.take(3).forEach { ConcernPill(it) }
-        }
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
-            Concerns.drop(3).forEach { ConcernPill(it) }
-        }
-    }
-}
-
-@Composable
-private fun ConcernPill(text: String) {
-    Box(
-        modifier = Modifier
-            .border(1.dp, Line, CircleShape)
-            .padding(horizontal = 14.dp, vertical = 9.dp),
-    ) {
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = InkSoft)
     }
 }
 
@@ -290,8 +219,8 @@ private fun TodayButton(streak: Int, onClick: () -> Unit, modifier: Modifier = M
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(54.dp)
-            .softShadow(corner = 27.dp, elevation = 5.dp)
+            .height(56.dp)
+            .softShadow(corner = 28.dp, elevation = 6.dp)
             .clip(CircleShape)
             .background(Cloud)
             .bounceClick { onClick() },
@@ -314,20 +243,5 @@ private fun TodayButton(streak: Int, onClick: () -> Unit, modifier: Modifier = M
                 color = Ink,
             )
         }
-    }
-}
-
-@Composable
-private fun SecondaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(54.dp)
-            .clip(CircleShape)
-            .border(1.5.dp, Line, CircleShape)
-            .bounceClick { onClick() },
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(text, style = MaterialTheme.typography.titleMedium, color = Ink)
     }
 }
