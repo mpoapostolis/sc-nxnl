@@ -50,7 +50,9 @@ import com.skincoach.app.ui.components.AnimatedCoachMascot
 import com.skincoach.app.ui.components.ConfettiBurst
 import com.skincoach.app.ui.components.MascotMood
 import com.skincoach.app.ui.components.bounceClick
+import com.skincoach.app.ui.components.reveal
 import com.skincoach.app.ui.components.softShadow
+import com.skincoach.app.ui.components.stagger
 import com.skincoach.app.ui.theme.Cloud
 import com.skincoach.app.ui.theme.Ink
 import com.skincoach.app.ui.theme.InkFaint
@@ -144,6 +146,10 @@ private fun TodayContent(
         }
     }
 
+    val morningCount = routine.morning.size
+    val eveningLabelDelay = 270 + morningCount * 45
+    val eveningBase = eveningLabelDelay + 45
+
     Box(Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -153,32 +159,43 @@ private fun TodayContent(
                 .padding(horizontal = 24.dp),
         ) {
             Spacer(Modifier.height(14.dp))
-            BackButton(onBack)
+            BackButton(onBack, Modifier.reveal(stagger(0)))
             Spacer(Modifier.height(18.dp))
-            Text("Today", style = MaterialTheme.typography.headlineLarge, color = Ink)
+            Text(
+                text = "Today",
+                style = MaterialTheme.typography.headlineLarge,
+                color = Ink,
+                modifier = Modifier.reveal(stagger(55)),
+            )
             Spacer(Modifier.height(6.dp))
             Text(
                 text = dateLabel,
                 style = MaterialTheme.typography.bodyMedium,
                 color = InkSoft,
+                modifier = Modifier.reveal(stagger(95)),
             )
             Spacer(Modifier.height(22.dp))
 
-            StreakHero(streak = streak, best = best, completedToday = completedToday)
+            StreakHero(
+                streak = streak,
+                best = best,
+                completedToday = completedToday,
+                modifier = Modifier.reveal(stagger(155)),
+            )
 
             Spacer(Modifier.height(32.dp))
-            SectionLabel("MORNING")
+            SectionLabel("MORNING", Modifier.reveal(stagger(225)))
             Spacer(Modifier.height(14.dp))
-            routine.morning.forEach { step ->
-                StepRow(step, step.title in checked, onToggle)
+            routine.morning.forEachIndexed { index, step ->
+                StepRow(step, step.title in checked, 270 + index * 45, onToggle)
                 Spacer(Modifier.height(10.dp))
             }
 
             Spacer(Modifier.height(20.dp))
-            SectionLabel("EVENING")
+            SectionLabel("EVENING", Modifier.reveal(stagger(eveningLabelDelay)))
             Spacer(Modifier.height(14.dp))
-            routine.evening.forEach { step ->
-                StepRow(step, step.title in checked, onToggle)
+            routine.evening.forEachIndexed { index, step ->
+                StepRow(step, step.title in checked, eveningBase + index * 45, onToggle)
                 Spacer(Modifier.height(10.dp))
             }
 
@@ -188,7 +205,9 @@ private fun TodayContent(
                 style = MaterialTheme.typography.labelMedium,
                 color = InkFaint,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .reveal(stagger(eveningBase + routine.evening.size * 45 + 30)),
             )
             Spacer(Modifier.height(26.dp))
         }
@@ -198,14 +217,19 @@ private fun TodayContent(
 }
 
 @Composable
-private fun StreakHero(streak: Int, best: Int, completedToday: Boolean) {
+private fun StreakHero(
+    streak: Int,
+    best: Int,
+    completedToday: Boolean,
+    modifier: Modifier = Modifier,
+) {
     val mood = when {
         completedToday -> MascotMood.Celebrating
         streak > 0 -> MascotMood.Cheerful
         else -> MascotMood.Curious
     }
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .softShadow(corner = 26.dp)
             .clip(RoundedCornerShape(26.dp))
@@ -265,18 +289,25 @@ private fun StreakHero(streak: Int, best: Int, completedToday: Boolean) {
 }
 
 @Composable
-private fun SectionLabel(text: String) {
+private fun SectionLabel(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text,
         style = MaterialTheme.typography.labelMedium,
         color = InkFaint,
+        modifier = modifier,
     )
 }
 
 @Composable
-private fun StepRow(step: RoutineStep, checked: Boolean, onToggle: (String) -> Unit) {
+private fun StepRow(
+    step: RoutineStep,
+    checked: Boolean,
+    entranceDelay: Int,
+    onToggle: (String) -> Unit,
+) {
     Row(
         modifier = Modifier
+            .reveal(stagger(entranceDelay))
             .fillMaxWidth()
             .softShadow(corner = 20.dp, elevation = 5.dp)
             .clip(RoundedCornerShape(20.dp))
@@ -387,9 +418,9 @@ private fun TodayEmptyState(onBack: () -> Unit, onScanClick: () -> Unit) {
 }
 
 @Composable
-private fun BackButton(onBack: () -> Unit) {
+private fun BackButton(onBack: () -> Unit, modifier: Modifier = Modifier) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .size(44.dp)
             .softShadow(corner = 22.dp, elevation = 4.dp)
             .clip(CircleShape)

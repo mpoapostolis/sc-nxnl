@@ -5,6 +5,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -51,7 +52,9 @@ import com.skincoach.app.data.db.ScanEntity
 import com.skincoach.app.ui.components.AnimatedCoachMascot
 import com.skincoach.app.ui.components.MascotMood
 import com.skincoach.app.ui.components.bounceClick
+import com.skincoach.app.ui.components.reveal
 import com.skincoach.app.ui.components.softShadow
+import com.skincoach.app.ui.components.stagger
 import com.skincoach.app.ui.theme.Cloud
 import com.skincoach.app.ui.theme.Ink
 import com.skincoach.app.ui.theme.InkFaint
@@ -88,6 +91,7 @@ fun HistoryScreen(onBack: () -> Unit) {
         Spacer(Modifier.height(14.dp))
         Box(
             modifier = Modifier
+                .reveal(stagger(0))
                 .size(44.dp)
                 .softShadow(corner = 22.dp, elevation = 4.dp)
                 .clip(CircleShape)
@@ -98,25 +102,35 @@ fun HistoryScreen(onBack: () -> Unit) {
             Text(text = "←", style = MaterialTheme.typography.titleLarge, color = Ink)
         }
         Spacer(Modifier.height(18.dp))
-        Text("Your progress", style = MaterialTheme.typography.headlineLarge, color = Ink)
+        Text(
+            text = "Your progress",
+            style = MaterialTheme.typography.headlineLarge,
+            color = Ink,
+            modifier = Modifier.reveal(stagger(55)),
+        )
         Spacer(Modifier.height(6.dp))
         Text(
             text = "Your Skin Score, tracked over time.",
             style = MaterialTheme.typography.bodyMedium,
             color = InkSoft,
+            modifier = Modifier.reveal(stagger(95)),
         )
         Spacer(Modifier.height(26.dp))
 
         if (scans.isEmpty()) {
             EmptyState()
         } else {
-            CoachCard(message = coachMessage(scans), mood = coachMood(scans))
+            CoachCard(
+                message = coachMessage(scans),
+                mood = coachMood(scans),
+                modifier = Modifier.reveal(stagger(160)),
+            )
             Spacer(Modifier.height(20.dp))
-            TrendCard(scans)
+            TrendCard(scans, Modifier.reveal(stagger(230)))
             Spacer(Modifier.height(28.dp))
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth().reveal(stagger(300)),
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
                     text = "EVERY GLOW CHECK",
@@ -130,8 +144,12 @@ fun HistoryScreen(onBack: () -> Unit) {
                 )
             }
             Spacer(Modifier.height(14.dp))
-            scans.forEach { scan ->
-                ScanRow(scan, onLongPress = { pendingDelete = scan })
+            scans.forEachIndexed { index, scan ->
+                ScanRow(
+                    scan = scan,
+                    entranceDelay = 340 + index * 45,
+                    onLongPress = { pendingDelete = scan },
+                )
                 Spacer(Modifier.height(12.dp))
             }
         }
@@ -159,9 +177,9 @@ fun HistoryScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun CoachCard(message: String, mood: MascotMood) {
+private fun CoachCard(message: String, mood: MascotMood, modifier: Modifier = Modifier) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .softShadow(corner = 24.dp)
             .clip(RoundedCornerShape(24.dp))
@@ -188,11 +206,11 @@ private fun CoachCard(message: String, mood: MascotMood) {
 }
 
 @Composable
-private fun TrendCard(scansNewestFirst: List<ScanEntity>) {
+private fun TrendCard(scansNewestFirst: List<ScanEntity>, modifier: Modifier = Modifier) {
     val scores = scansNewestFirst.map { it.overallScore }.reversed()
     val current = scores.last()
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .softShadow(corner = 24.dp)
             .clip(RoundedCornerShape(24.dp))
@@ -254,7 +272,6 @@ private fun TrendChart(scores: List<Int>, modifier: Modifier) {
             Offset(stepX * i, size.height - pad - norm * (size.height - 2 * pad))
         }
 
-        // a soft, smooth curve through the scores
         val line = Path().apply {
             moveTo(pts[0].x, pts[0].y)
             for (i in 1 until n) {
@@ -265,7 +282,6 @@ private fun TrendChart(scores: List<Int>, modifier: Modifier) {
             lineTo(pts[n - 1].x, pts[n - 1].y)
         }
 
-        // gentle gradient fill beneath the curve
         val fill = Path().apply {
             addPath(line)
             lineTo(pts[n - 1].x, size.height)
@@ -284,7 +300,6 @@ private fun TrendChart(scores: List<Int>, modifier: Modifier) {
             style = Stroke(width = 3.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
         )
 
-        // a single "you are here" dot on the latest score
         val last = pts[n - 1]
         drawCircle(color = Cloud, radius = 7.dp.toPx(), center = last)
         drawCircle(color = Terracotta, radius = 4.5.dp.toPx(), center = last)
@@ -293,7 +308,7 @@ private fun TrendChart(scores: List<Int>, modifier: Modifier) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ScanRow(scan: ScanEntity, onLongPress: () -> Unit) {
+private fun ScanRow(scan: ScanEntity, entranceDelay: Int, onLongPress: () -> Unit) {
     val thumb = remember(scan.photoPath) {
         loadOrientedBitmap(scan.photoPath, maxSize = 256)?.asImageBitmap()
     }
@@ -302,6 +317,7 @@ private fun ScanRow(scan: ScanEntity, onLongPress: () -> Unit) {
     }
     Row(
         modifier = Modifier
+            .reveal(stagger(entranceDelay))
             .fillMaxWidth()
             .softShadow(corner = 20.dp, elevation = 6.dp)
             .clip(RoundedCornerShape(20.dp))

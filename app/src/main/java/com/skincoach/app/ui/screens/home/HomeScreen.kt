@@ -94,7 +94,7 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .safeDrawingPadding()
-                .padding(horizontal = 28.dp, vertical = 12.dp),
+                .padding(horizontal = 24.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Row(
@@ -201,7 +201,7 @@ private fun ScanButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(60.dp)
+            .height(58.dp)
             .background(Terracotta, CircleShape)
             .bounceClick { onClick() },
         contentAlignment = Alignment.Center,

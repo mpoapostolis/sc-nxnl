@@ -379,7 +379,8 @@ private fun ResultContent(
                 color = InkSoft,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .bounceClick { onDone() },
+                    .bounceClick { onDone() }
+                    .padding(vertical = 10.dp),
                 textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(16.dp))
@@ -424,7 +425,7 @@ private fun LumiSays(mood: MascotMood, line: String, modifier: Modifier = Modifi
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(22.dp))
+            .clip(RoundedCornerShape(24.dp))
             .background(Cloud)
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -607,7 +608,7 @@ private fun TipsSection(analysis: SkinAnalysis) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
+                    .clip(RoundedCornerShape(24.dp))
                     .background(Cloud)
                     .padding(16.dp),
             ) {

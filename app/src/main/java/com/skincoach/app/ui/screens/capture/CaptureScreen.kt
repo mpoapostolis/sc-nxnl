@@ -339,7 +339,7 @@ private fun PermissionPrompt(
         Spacer(Modifier.height(10.dp))
         Text(
             text = "Lumi needs your camera for the selfie she reads. Your photo is " +
-                "analysed right here on your phone — it never leaves your device.",
+                "analyzed right here on your phone — it never leaves your device.",
             style = MaterialTheme.typography.bodyLarge,
             color = InkSoft,
             textAlign = TextAlign.Center,
