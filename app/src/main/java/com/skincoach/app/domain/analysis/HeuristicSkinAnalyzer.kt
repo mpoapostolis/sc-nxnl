@@ -1,0 +1,240 @@
+package com.skincoach.app.domain.analysis
+
+import android.graphics.Bitmap
+import android.util.Log
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.face.Face
+import com.google.mlkit.vision.face.FaceDetection
+import com.google.mlkit.vision.face.FaceDetectorOptions
+import com.google.mlkit.vision.face.FaceLandmark
+import com.skincoach.app.domain.AnalysisResult
+import com.skincoach.app.domain.Concern
+import com.skincoach.app.domain.ConcernScore
+import com.skincoach.app.domain.SkinAnalysis
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlin.math.roundToInt
+import kotlin.math.sqrt
+
+/**
+ * On-device skin analyzer. Locates the face with ML Kit, samples skin patches
+ * (forehead, cheeks, nose, chin) and derives scores from real measurements.
+ *
+ * Every measurement is **lighting-normalized** (expressed relative to the skin's
+ * own brightness) and uses **medians** over generous patches — so the same face
+ * scores consistently across different lighting, instead of drifting.
+ *
+ * It is a heuristic, not a trained dermatology model — acne and fine-line scores
+ * are approximate. Everything runs locally; no network, no cost.
+ */
+class HeuristicSkinAnalyzer : SkinAnalyzer {
+
+    private val detector = FaceDetection.getClient(
+        FaceDetectorOptions.Builder()
+            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
+            .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
+            .build(),
+    )
+
+    override suspend fun analyze(bitmap: Bitmap): AnalysisResult {
+        val face = try {
+            detectFace(bitmap)
+        } catch (e: Exception) {
+            Log.e(TAG, "Face detection failed", e)
+            return AnalysisResult.Failed
+        } ?: return AnalysisResult.NoFace
+
+        return withContext(Dispatchers.Default) {
+            val metrics = measure(bitmap, face) ?: return@withContext AnalysisResult.NoFace
+            AnalysisResult.Success(score(metrics), cropToFace(bitmap, face))
+        }
+    }
+
+    private suspend fun detectFace(bitmap: Bitmap): Face? =
+        suspendCancellableCoroutine { cont ->
+            detector.process(InputImage.fromBitmap(bitmap, 0))
+                .addOnSuccessListener { faces -> cont.resume(faces.firstOrNull()) }
+                .addOnFailureListener { cont.resumeWithException(it) }
+        }
+
+    private fun measure(bitmap: Bitmap, face: Face): Metrics? {
+        val box = face.boundingBox
+        val w = box.width()
+        val h = box.height()
+        if (w < 60 || h < 60) return null
+
+        fun landmark(type: Int, fallbackX: Int, fallbackY: Int): Pair<Int, Int> {
+            val p = face.getLandmark(type)?.position
+            return if (p != null) p.x.toInt() to p.y.toInt() else fallbackX to fallbackY
+        }
+
+        // Generous patches — more pixels means less sampling noise.
+        val side = (w * 0.19f).toInt().coerceAtLeast(14)
+        val forehead = samplePatch(bitmap, box.centerX(), box.top + (h * 0.20f).toInt(), side)
+        val leftCheek = landmark(FaceLandmark.LEFT_CHEEK, box.left + (w * 0.24f).toInt(), box.centerY())
+            .let { samplePatch(bitmap, it.first, it.second, side) }
+        val rightCheek = landmark(FaceLandmark.RIGHT_CHEEK, box.right - (w * 0.24f).toInt(), box.centerY())
+            .let { samplePatch(bitmap, it.first, it.second, side) }
+        val nose = landmark(FaceLandmark.NOSE_BASE, box.centerX(), box.centerY())
+            .let { samplePatch(bitmap, it.first, it.second, side) }
+        val chin = samplePatch(bitmap, box.centerX(), box.bottom - (h * 0.12f).toInt(), side)
+
+        val patches = listOfNotNull(forehead, leftCheek, rightCheek, nose, chin)
+        if (patches.size < 3) return null
+
+        val patchLums = patches.map { it.medianLum }
+        val overallLum = patchLums.average()
+        return Metrics(
+            redness = patches.map { it.medianRedness }.average(),
+            shine = patches.map { it.shineFraction }.average(),
+            texture = patches.map { it.relativeTexture }.average(),
+            toneUnevenness = standardDeviation(patchLums) / (overallLum + 1.0),
+            blemish = patches.map { it.blemishFraction }.average(),
+            foreheadTexture = forehead?.relativeTexture
+                ?: patches.map { it.relativeTexture }.average(),
+        )
+    }
+
+    private fun samplePatch(bitmap: Bitmap, cx: Int, cy: Int, side: Int): PatchStats? {
+        val half = side / 2
+        val x = (cx - half).coerceIn(0, bitmap.width - 1)
+        val y = (cy - half).coerceIn(0, bitmap.height - 1)
+        val pw = side.coerceAtMost(bitmap.width - x)
+        val ph = side.coerceAtMost(bitmap.height - y)
+        if (pw < 8 || ph < 8) return null
+
+        val pixels = IntArray(pw * ph)
+        bitmap.getPixels(pixels, 0, pw, x, y, pw, ph)
+        val n = pixels.size
+
+        val lums = DoubleArray(n)
+        val reds = DoubleArray(n)
+        val sats = DoubleArray(n)
+        for (i in pixels.indices) {
+            val p = pixels[i]
+            val r = (p shr 16) and 0xFF
+            val g = (p shr 8) and 0xFF
+            val b = p and 0xFF
+            val lum = 0.299 * r + 0.587 * g + 0.114 * b
+            lums[i] = lum
+            // Redness as a ratio to brightness — independent of exposure.
+            reds[i] = (r - (g + b) / 2.0) / (lum + 1.0)
+            val mx = maxOf(r, g, b)
+            val mn = minOf(r, g, b)
+            sats[i] = if (mx > 0) (mx - mn).toDouble() / mx else 0.0
+        }
+
+        val medianLum = median(lums)
+        val medianRed = median(reds)
+
+        var varSum = 0.0
+        for (l in lums) {
+            val d = l - medianLum
+            varSum += d * d
+        }
+        val lumStd = sqrt(varSum / n)
+
+        // Shine and blemishes are measured RELATIVE to the patch's own skin —
+        // a highlight is brighter than its surroundings whatever the lighting.
+        val shineThreshold = medianLum * 1.40
+        val darkThreshold = medianLum * 0.84
+        var shine = 0
+        var blemish = 0
+        for (i in 0 until n) {
+            if (lums[i] > shineThreshold && sats[i] < 0.20) shine++
+            if (lums[i] < darkThreshold || reds[i] > medianRed + 0.10) blemish++
+        }
+
+        return PatchStats(
+            medianLum = medianLum,
+            medianRedness = medianRed,
+            relativeTexture = lumStd / (medianLum + 1.0),
+            shineFraction = shine.toDouble() / n,
+            blemishFraction = blemish.toDouble() / n,
+        )
+    }
+
+    /** Crops the photo down to the face (with padding) for display and history. */
+    private fun cropToFace(bitmap: Bitmap, face: Face): Bitmap {
+        val box = face.boundingBox
+        val padX = (box.width() * 0.22f).toInt()
+        val padY = (box.height() * 0.30f).toInt()
+        val left = (box.left - padX).coerceAtLeast(0)
+        val top = (box.top - padY).coerceAtLeast(0)
+        val right = (box.right + padX).coerceAtMost(bitmap.width)
+        val bottom = (box.bottom + padY).coerceAtMost(bitmap.height)
+        val w = (right - left).coerceAtLeast(1)
+        val h = (bottom - top).coerceAtLeast(1)
+        return runCatching {
+            Bitmap.createBitmap(bitmap, left, top, w, h)
+        }.getOrDefault(bitmap)
+    }
+
+    private fun score(m: Metrics): SkinAnalysis {
+        val concerns = listOf(
+            ConcernScore(Concern.REDNESS, mapScore(m.redness, best = 0.07, worst = 0.24)),
+            ConcernScore(Concern.OILINESS, mapScore(m.shine, best = 0.0, worst = 0.16)),
+            ConcernScore(Concern.PORES, mapScore(m.texture, best = 0.05, worst = 0.20)),
+            ConcernScore(Concern.DARK_SPOTS, mapScore(m.toneUnevenness, best = 0.03, worst = 0.16)),
+            ConcernScore(Concern.ACNE, mapScore(m.blemish, best = 0.0, worst = 0.14)),
+            ConcernScore(Concern.FINE_LINES, mapScore(m.foreheadTexture, best = 0.05, worst = 0.20)),
+        )
+        val weights = mapOf(
+            Concern.REDNESS to 1.0, Concern.OILINESS to 1.0,
+            Concern.PORES to 1.0, Concern.DARK_SPOTS to 1.0,
+            Concern.ACNE to 0.8, Concern.FINE_LINES to 0.6,
+        )
+        val weightedSum = concerns.sumOf { it.score * (weights[it.concern] ?: 1.0) }
+        val totalWeight = concerns.sumOf { weights[it.concern] ?: 1.0 }
+        val overall = (weightedSum / totalWeight).roundToInt().coerceIn(0, 100)
+        return SkinAnalysis(overallScore = overall, concerns = concerns)
+    }
+
+    /** Maps a normalized measurement to a 55-96 score — a tight, encouraging band. */
+    private fun mapScore(value: Double, best: Double, worst: Double): Int {
+        val t = ((value - best) / (worst - best)).coerceIn(0.0, 1.0)
+        return (96 - t * 41).roundToInt()
+    }
+
+    private fun median(values: DoubleArray): Double {
+        if (values.isEmpty()) return 0.0
+        val sorted = values.copyOf()
+        sorted.sort()
+        val mid = sorted.size / 2
+        return if (sorted.size % 2 == 0) {
+            (sorted[mid - 1] + sorted[mid]) / 2.0
+        } else {
+            sorted[mid]
+        }
+    }
+
+    private fun standardDeviation(values: List<Double>): Double {
+        if (values.size < 2) return 0.0
+        val mean = values.average()
+        return sqrt(values.sumOf { (it - mean) * (it - mean) } / values.size)
+    }
+
+    private data class PatchStats(
+        val medianLum: Double,
+        val medianRedness: Double,
+        val relativeTexture: Double,
+        val shineFraction: Double,
+        val blemishFraction: Double,
+    )
+
+    private data class Metrics(
+        val redness: Double,
+        val shine: Double,
+        val texture: Double,
+        val toneUnevenness: Double,
+        val blemish: Double,
+        val foreheadTexture: Double,
+    )
+
+    private companion object {
+        const val TAG = "HeuristicSkinAnalyzer"
+    }
+}
