@@ -17,10 +17,15 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -50,6 +55,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -58,7 +64,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.skincoach.app.ui.components.AnimatedCoachMascot
+import com.skincoach.app.ui.components.MascotMood
+import com.skincoach.app.ui.components.bounceClick
+import com.skincoach.app.ui.theme.Cloud
 import com.skincoach.app.ui.theme.Ink
+import com.skincoach.app.ui.theme.InkSoft
+import com.skincoach.app.ui.theme.Paper
 import com.skincoach.app.ui.theme.Terracotta
 import java.io.File
 import java.util.concurrent.Executors
@@ -168,11 +180,11 @@ private fun CameraContent(onClose: () -> Unit, onCaptured: (String) -> Unit) {
             modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(
-                text = "✕",
-                style = MaterialTheme.typography.titleLarge,
-                color = Color.White,
-                modifier = Modifier.align(Alignment.Start).clickable(onClick = onClose),
+            CircleIconButton(
+                glyph = "✕",
+                onDark = true,
+                onClick = onClose,
+                modifier = Modifier.align(Alignment.Start),
             )
             Spacer(Modifier.weight(1f))
             GuidancePill(framing)
@@ -249,18 +261,50 @@ private fun GuidancePill(state: FramingState, modifier: Modifier = Modifier) {
 @Composable
 private fun ShutterButton(enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val haptic = LocalHapticFeedback.current
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.88f else 1f,
+        animationSpec = spring(dampingRatio = 0.38f, stiffness = Spring.StiffnessMedium),
+        label = "shutter",
+    )
     Box(
         modifier = modifier
             .size(78.dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
             .border(3.dp, Color.White, CircleShape)
             .padding(6.dp)
             .clip(CircleShape)
             .background(if (enabled) Color.White else Color.White.copy(alpha = 0.45f))
-            .clickable(enabled = enabled) {
+            .clickable(interactionSource = interaction, indication = null, enabled = enabled) {
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 onClick()
             },
     )
+}
+
+/** A small round icon button — frosted-dark over the camera, soft over the app. */
+@Composable
+private fun CircleIconButton(
+    glyph: String,
+    onDark: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .size(42.dp)
+            .clip(CircleShape)
+            .background(if (onDark) Color.Black.copy(alpha = 0.42f) else Cloud)
+            .bounceClick { onClick() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = glyph,
+            style = MaterialTheme.typography.titleMedium,
+            color = if (onDark) Color.White else Ink,
+        )
+    }
 }
 
 @Composable
@@ -270,34 +314,44 @@ private fun PermissionPrompt(
     onClose: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Paper)
+            .safeDrawingPadding()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(
-            text = "✕",
-            style = MaterialTheme.typography.titleLarge,
-            color = Color.White,
-            modifier = Modifier.clickable(onClick = onClose),
+        CircleIconButton(
+            glyph = "✕",
+            onDark = false,
+            onClick = onClose,
+            modifier = Modifier.align(Alignment.Start),
         )
         Spacer(Modifier.weight(1f))
-        Text(
-            text = "Camera access",
-            style = MaterialTheme.typography.headlineMedium,
-            color = Color.White,
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = "Skin Coach needs your camera to take the selfie it analyzes. " +
-                "Photos stay on your device.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color.White.copy(alpha = 0.75f),
-        )
+        AnimatedCoachMascot(Modifier.size(98.dp), MascotMood.Curious)
         Spacer(Modifier.height(24.dp))
+        Text(
+            text = "Let's see your skin",
+            style = MaterialTheme.typography.headlineMedium,
+            color = Ink,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(
+            text = "Lumi needs your camera for the selfie she reads. Your photo is " +
+                "analysed right here on your phone — it never leaves your device.",
+            style = MaterialTheme.typography.bodyLarge,
+            color = InkSoft,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(0.9f),
+        )
+        Spacer(Modifier.height(30.dp))
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp)
+                .height(58.dp)
                 .background(Terracotta, CircleShape)
-                .clickable(onClick = onAllow),
+                .bounceClick { onAllow() },
             contentAlignment = Alignment.Center,
         ) {
             Text(
@@ -306,15 +360,18 @@ private fun PermissionPrompt(
                 color = Color.White,
             )
         }
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(8.dp))
         Text(
             text = "Open settings",
             style = MaterialTheme.typography.labelLarge,
-            color = Color.White.copy(alpha = 0.7f),
+            color = InkSoft,
             textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onSettings),
+            modifier = Modifier
+                .clip(CircleShape)
+                .bounceClick { onSettings() }
+                .padding(horizontal = 20.dp, vertical = 12.dp),
         )
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.weight(1.3f))
     }
 }
 
