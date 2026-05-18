@@ -13,6 +13,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.rotate
 import com.skincoach.app.ui.theme.Sage
 import com.skincoach.app.ui.theme.Terracotta
@@ -31,23 +32,44 @@ private val ConfettiColors = listOf(
     Color(0xFFFFFFFF),
 )
 
-/** One piece of confetti — randomised launch direction, spin, size and colour. */
+private const val KIND_STRIP = 0
+private const val KIND_DOT = 1
+private const val KIND_SPARKLE = 2
+
+/** One piece of confetti — randomised launch, spin, size, colour and shape. */
 private class Confetto {
     val angle = -1.5708f + (Random.nextFloat() - 0.5f) * 2.7f      // mostly upward
     val speed = 360f + Random.nextFloat() * 620f
     val spinDeg = (Random.nextFloat() - 0.5f) * 760f
     val size = 8f + Random.nextFloat() * 11f
     val color = ConfettiColors[Random.nextInt(ConfettiColors.size)]
-    val isDot = Random.nextFloat() < 0.34f
+    val kind = Random.nextFloat().let { r ->
+        when {
+            r < 0.5f -> KIND_STRIP
+            r < 0.78f -> KIND_DOT
+            else -> KIND_SPARKLE
+        }
+    }
     val originX = 0.5f + (Random.nextFloat() - 0.5f) * 0.34f
     val originY = 0.32f + (Random.nextFloat() - 0.5f) * 0.14f
     val delay = Random.nextFloat() * 0.22f
 }
 
+/** A four-point sparkle, centred at (cx, cy). */
+private fun sparklePath(cx: Float, cy: Float, r: Float): Path = Path().apply {
+    moveTo(cx, cy - r)
+    quadraticTo(cx + r * 0.16f, cy - r * 0.16f, cx + r, cy)
+    quadraticTo(cx + r * 0.16f, cy + r * 0.16f, cx, cy + r)
+    quadraticTo(cx - r * 0.16f, cy + r * 0.16f, cx - r, cy)
+    quadraticTo(cx - r * 0.16f, cy - r * 0.16f, cx, cy - r)
+    close()
+}
+
 /**
- * A soft confetti pop in the app's blush palette. Flip [play] to true to fire it once;
- * it erupts from the upper-middle of [modifier]'s bounds and gently rains down.
- * [intensity] (0f..1f) scales how many pieces fly — 0f draws nothing at all.
+ * A soft confetti pop in the app's blush palette — strips, dots and sparkles.
+ * Flip [play] to true to fire it once; it erupts from the upper-middle of
+ * [modifier]'s bounds and gently rains down. [intensity] (0f..1f) scales how
+ * many pieces fly — 0f draws nothing at all.
  */
 @Composable
 fun ConfettiBurst(
@@ -82,10 +104,12 @@ fun ConfettiBurst(
             val x = size.width * p.originX + cos(p.angle) * p.speed * t
             val y = size.height * p.originY + sin(p.angle) * p.speed * t + 0.5f * gravity * t * t
             val s = p.size * density
-            if (p.isDot) {
-                drawCircle(p.color, s * 0.34f, Offset(x, y), alpha = alpha)
-            } else {
-                rotate(degrees = p.spinDeg * t, pivot = Offset(x, y)) {
+            when (p.kind) {
+                KIND_DOT -> drawCircle(p.color, s * 0.34f, Offset(x, y), alpha = alpha)
+                KIND_SPARKLE -> rotate(degrees = p.spinDeg * t, pivot = Offset(x, y)) {
+                    drawPath(sparklePath(x, y, s * 0.62f), p.color, alpha = alpha)
+                }
+                else -> rotate(degrees = p.spinDeg * t, pivot = Offset(x, y)) {
                     drawRoundRect(
                         color = p.color,
                         topLeft = Offset(x - s / 2f, y - s * 0.22f),

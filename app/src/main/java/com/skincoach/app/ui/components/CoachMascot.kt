@@ -15,6 +15,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -26,41 +27,72 @@ import com.skincoach.app.ui.theme.Ink
 import com.skincoach.app.ui.theme.Terracotta
 import com.skincoach.app.ui.theme.TerracottaDeep
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.random.Random
 
 /** Lumi's moods — the coach reacts to whatever's happening. */
 enum class MascotMood { Cheerful, Celebrating, Caring, Curious }
 
+/** A soft highlight for Lumi's cheeks. */
+private val LumiHighlight = Color(0xFFEDA9AD)
+
 /**
  * Lumi — the Skin Coach mascot. A soft, dewy little face drawn on a Canvas.
- * [mood] swaps her whole expression; [eyeOpen] is 1f = open, ~0f = mid-blink.
+ * [mood] swaps her whole expression; [eyeOpen] is 1f = open, ~0f = mid-blink;
+ * [gaze] (x,y each -1f..1f) drifts her pupils so she looks around.
  */
 @Composable
 fun CoachMascot(
     modifier: Modifier = Modifier,
     mood: MascotMood = MascotMood.Cheerful,
     eyeOpen: Float = 1f,
+    gaze: Offset = Offset.Zero,
 ) {
     val tilt = if (mood == MascotMood.Curious) -8f else 0f
     Canvas(modifier.graphicsLayer { rotationZ = tilt }) {
-        drawLumi(mood, eyeOpen)
+        drawLumi(mood, eyeOpen, gaze)
     }
 }
 
-private fun DrawScope.drawLumi(mood: MascotMood, eyeOpen: Float) {
+private fun DrawScope.drawLumi(mood: MascotMood, eyeOpen: Float, gaze: Offset) {
     val w = size.width
     val h = size.height
     val celebrating = mood == MascotMood.Celebrating
+    val cx = w / 2f
+    val cy = h / 2f
+    val headR = w * 0.46f
 
-    // head
-    drawCircle(Terracotta, w * 0.46f, Offset(w / 2f, h / 2f))
-    // dewy highlights
-    drawCircle(Color.White.copy(alpha = 0.34f), w * 0.135f, Offset(w * 0.33f, h * 0.30f))
-    drawCircle(Color.White.copy(alpha = 0.20f), w * 0.052f, Offset(w * 0.63f, h * 0.24f))
-    // rosy cheeks — brighter and bigger when she's celebrating
-    val cheekAlpha = if (celebrating) 0.58f else 0.40f
-    val cheekR = w * (if (celebrating) 0.10f else 0.085f)
-    drawCircle(TerracottaDeep.copy(alpha = cheekAlpha), cheekR, Offset(w * 0.28f, h * 0.63f))
-    drawCircle(TerracottaDeep.copy(alpha = cheekAlpha), cheekR, Offset(w * 0.72f, h * 0.63f))
+    // head — a soft, dimensional sphere (light from the top-left)
+    drawCircle(
+        brush = Brush.radialGradient(
+            0f to LumiHighlight,
+            0.58f to Terracotta,
+            1f to TerracottaDeep,
+            center = Offset(w * 0.39f, h * 0.35f),
+            radius = headR * 1.7f,
+        ),
+        radius = headR,
+        center = Offset(cx, cy),
+    )
+    // glossy dewy highlights
+    drawCircle(Color.White.copy(alpha = 0.38f), w * 0.13f, Offset(w * 0.34f, h * 0.29f))
+    drawCircle(Color.White.copy(alpha = 0.22f), w * 0.055f, Offset(w * 0.62f, h * 0.23f))
+
+    // soft blush cheeks — a gentle gradient, not a flat blob
+    val cheekY = h * 0.62f
+    val cheekR = w * (if (celebrating) 0.135f else 0.118f)
+    val cheekAlpha = if (celebrating) 0.62f else 0.42f
+    listOf(w * 0.27f, w * 0.73f).forEach { ccx ->
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(TerracottaDeep.copy(alpha = cheekAlpha), Color.Transparent),
+                center = Offset(ccx, cheekY),
+                radius = cheekR,
+            ),
+            radius = cheekR,
+            center = Offset(ccx, cheekY),
+        )
+    }
 
     val eyeY = h * 0.45f
     val leftX = w * 0.37f
@@ -72,14 +104,14 @@ private fun DrawScope.drawLumi(mood: MascotMood, eyeOpen: Float) {
             // gentle, kind brows — inner ends lifted, never angry
             drawLine(
                 Ink,
-                Offset(leftX - w * 0.075f, eyeY - h * 0.15f),
-                Offset(leftX + w * 0.065f, eyeY - h * 0.21f),
+                Offset(leftX - w * 0.075f, eyeY - h * 0.16f),
+                Offset(leftX + w * 0.065f, eyeY - h * 0.22f),
                 strokeWidth = w * 0.042f, cap = StrokeCap.Round,
             )
             drawLine(
                 Ink,
-                Offset(rightX + w * 0.075f, eyeY - h * 0.15f),
-                Offset(rightX - w * 0.065f, eyeY - h * 0.21f),
+                Offset(rightX + w * 0.075f, eyeY - h * 0.16f),
+                Offset(rightX - w * 0.065f, eyeY - h * 0.22f),
                 strokeWidth = w * 0.042f, cap = StrokeCap.Round,
             )
         }
@@ -88,7 +120,7 @@ private fun DrawScope.drawLumi(mood: MascotMood, eyeOpen: Float) {
             drawArc(
                 color = Ink,
                 startAngle = 200f, sweepAngle = 140f, useCenter = false,
-                topLeft = Offset(leftX - w * 0.085f, eyeY - h * 0.30f),
+                topLeft = Offset(leftX - w * 0.085f, eyeY - h * 0.31f),
                 size = Size(w * 0.17f, h * 0.13f),
                 style = Stroke(width = w * 0.04f, cap = StrokeCap.Round),
             )
@@ -99,7 +131,7 @@ private fun DrawScope.drawLumi(mood: MascotMood, eyeOpen: Float) {
     // eyes
     if (celebrating) {
         // joyful smile-curve eyes  ◡ ◡
-        val eyeW = w * 0.15f
+        val eyeW = w * 0.155f
         val eyeH = h * 0.12f
         listOf(leftX, rightX).forEach { ex ->
             drawArc(
@@ -107,30 +139,43 @@ private fun DrawScope.drawLumi(mood: MascotMood, eyeOpen: Float) {
                 startAngle = 20f, sweepAngle = 140f, useCenter = false,
                 topLeft = Offset(ex - eyeW / 2f, eyeY - eyeH / 2f),
                 size = Size(eyeW, eyeH),
-                style = Stroke(width = w * 0.055f, cap = StrokeCap.Round),
+                style = Stroke(width = w * 0.056f, cap = StrokeCap.Round),
             )
         }
     } else {
         val open = eyeOpen.coerceIn(0.07f, 1f)
-        val eyeRx = w * (if (mood == MascotMood.Caring) 0.08f else 0.088f)
+        val eyeRx = w * (if (mood == MascotMood.Caring) 0.088f else 0.096f)
         val eyeRy = eyeRx * open
-        listOf(leftX, rightX).forEach { cx ->
+        val pupilDx = gaze.x * eyeRx * 0.4f
+        val pupilDy = gaze.y * eyeRy * 0.4f
+        listOf(leftX, rightX).forEach { ex ->
+            // white of the eye
             drawOval(
                 Color.White,
-                Offset(cx - eyeRx, eyeY - eyeRy),
+                Offset(ex - eyeRx, eyeY - eyeRy),
                 Size(eyeRx * 2f, eyeRy * 2f),
             )
+            // pupil — follows her gaze
+            val pupRx = eyeRx * 0.52f
+            val pupRy = eyeRy * 0.66f
+            val px = ex + pupilDx
+            val py = eyeY + pupilDy
             drawOval(
                 Ink,
-                Offset(cx - eyeRx * 0.46f, eyeY - eyeRy * 0.62f),
-                Size(eyeRx * 0.92f, eyeRy * 1.24f),
+                Offset(px - pupRx, py - pupRy),
+                Size(pupRx * 2f, pupRy * 2f),
             )
-            // catchlight — a tiny spark of life in each eye
-            if (open > 0.5f) {
+            // glossy catchlights — a big one and a tiny one
+            if (open > 0.45f) {
                 drawCircle(
                     Color.White,
-                    eyeRx * 0.2f,
-                    Offset(cx - eyeRx * 0.1f, eyeY - eyeRy * 0.34f),
+                    eyeRx * 0.25f,
+                    Offset(px - pupRx * 0.4f, py - pupRy * 0.52f),
+                )
+                drawCircle(
+                    Color.White.copy(alpha = 0.7f),
+                    eyeRx * 0.12f,
+                    Offset(px + pupRx * 0.34f, py + pupRy * 0.36f),
                 )
             }
         }
@@ -169,7 +214,10 @@ private fun DrawScope.drawLumi(mood: MascotMood, eyeOpen: Float) {
     }
 }
 
-/** Lumi, alive — a gentle idle bob with squash-&-stretch, soft breathing, and blinks. */
+/**
+ * Lumi, alive — an idle bob with squash-&-stretch, soft breathing, a gentle
+ * side-to-side sway, blinks, and eyes that drift around on their own.
+ */
 @Composable
 fun AnimatedCoachMascot(
     modifier: Modifier = Modifier,
@@ -181,7 +229,7 @@ fun AnimatedCoachMascot(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(if (excited) 640 else 1900, easing = FastOutSlowInEasing),
+            animation = tween(if (excited) 620 else 1900, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "bob",
@@ -195,6 +243,15 @@ fun AnimatedCoachMascot(
         ),
         label = "breath",
     )
+    val sway by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(if (excited) 520 else 2700, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "sway",
+    )
     val eyeOpen = remember { Animatable(1f) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -203,6 +260,22 @@ fun AnimatedCoachMascot(
             eyeOpen.animateTo(1f, tween(130))
         }
     }
+    // eyes that wander — a tiny dart, hold, then back to centre
+    val gazeX = remember { Animatable(0f) }
+    val gazeY = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(2600L + (0..3400).random())
+            val tx = (Random.nextFloat() * 2f - 1f) * 0.75f
+            val ty = (Random.nextFloat() * 2f - 1f) * 0.45f
+            launch { gazeX.animateTo(tx, tween(260)) }
+            gazeY.animateTo(ty, tween(260))
+            delay(820)
+            launch { gazeX.animateTo(0f, tween(240)) }
+            gazeY.animateTo(0f, tween(240))
+        }
+    }
+    val swayDeg = if (excited) 10f else 5f
     CoachMascot(
         modifier = modifier.graphicsLayer {
             translationY = -bob * (if (excited) 12f else 7f).dp.toPx()
@@ -211,9 +284,11 @@ fun AnimatedCoachMascot(
             val breathe = breath * 0.02f
             scaleX = 1f - stretch + breathe
             scaleY = 1f + stretch + breathe
+            rotationZ = (sway - 0.5f) * swayDeg
         },
         mood = mood,
         eyeOpen = eyeOpen.value,
+        gaze = Offset(gazeX.value, gazeY.value),
     )
 }
 
